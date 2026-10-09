@@ -2,6 +2,9 @@
 // NOT an investment. NOT a security. NO cash value.
 // It is a restaurant loyalty points system only.
 
+import SectionHeader from "@/components/SectionHeader";
+import SubscribeForm from "@/components/SubscribeForm";
+
 const earnWays = [
   { emoji: "📱", label: "Scan QR at the table" },
   { emoji: "🎬", label: "Watch a music video" },
@@ -23,42 +26,28 @@ const spendWays = [
 export default function RewardsSection() {
   return (
     <section id="rewards" className="gp-section" style={{ backgroundColor: "#0d0d0d" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 text-center">
+      <div className="max-w-5xl mx-auto">
+        <div className="text-center mb-2">
           <div
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-[family-name:var(--font-oswald)] font-bold uppercase tracking-widest mb-4 border border-[#ffd700]/30"
             style={{ color: "#ffd700", background: "rgba(255,215,0,0.08)" }}
           >
             Coming Soon
           </div>
-          <h2
-            className="font-[family-name:var(--font-oswald)] font-bold uppercase leading-tight mb-3"
-            style={{ fontSize: "clamp(1.8rem, 6vw, 2.5rem)", color: "#f5f5f5" }}
-          >
-            Graffiti Pasta Coin
-          </h2>
-          <p
-            className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-widest mb-4"
-            style={{
-              fontSize: "clamp(1rem, 3vw, 1.2rem)",
-              background: "linear-gradient(135deg, #e63030, #ff6b1a, #ffd700)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            Earn GPC. Spend it on the good stuff.
-          </p>
-          {/* Legal disclaimer */}
-          <p className="text-[#f5f5f5]/30 text-[10px] font-[family-name:var(--font-inter)] max-w-xs mx-auto leading-relaxed">
-            ⚠️ GPC is a restaurant loyalty points program. Not cryptocurrency.
-            Not an investment. No cash value.
-          </p>
         </div>
+        <SectionHeader
+          center
+          eyebrow="Earn GPC. Spend it on the good stuff."
+          title="Graffiti Pasta Coin"
+        />
+        {/* Legal disclaimer */}
+        <p className="text-[#f5f5f5]/30 text-[10px] font-[family-name:var(--font-inter)] max-w-xs mx-auto leading-relaxed text-center -mt-6 mb-8">
+          GPC is a restaurant loyalty points program. Not cryptocurrency.
+          Not an investment. No cash value.
+        </p>
 
         {/* Earn + Spend cards */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 mb-8">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 mb-8 max-w-2xl mx-auto">
           {/* Earn */}
           <div
             className="rounded-2xl border border-[#e63030]/30 bg-[#1a1a1a] p-6"
@@ -106,7 +95,7 @@ export default function RewardsSection() {
 
         {/* Join the list */}
         <div
-          className="rounded-2xl border border-[#ff6b1a]/30 bg-[#1a1a1a] p-6 text-center"
+          className="rounded-2xl border border-[#ff6b1a]/30 bg-[#1a1a1a] p-6 text-center max-w-2xl mx-auto"
         >
           <p
             className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] mb-2 text-lg"
@@ -117,17 +106,11 @@ export default function RewardsSection() {
             Be first to know when GPC launches. Early members get bonus coins on
             day one.
           </p>
-          <a
-            href="mailto:acmcreativeconcepts@gmail.com?subject=GPC Early Access — Join the List&body=I want to be on the Graffiti Pasta Coin early access list!"
-            className="inline-flex items-center gap-2 px-8 py-3 rounded-full font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-sm text-white transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(135deg, #e63030, #ff6b1a)" }}
-          >
-            Get Early Access
-          </a>
+          <SubscribeForm source="rewards" />
         </div>
       </div>
 
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }

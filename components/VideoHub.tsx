@@ -1,4 +1,5 @@
 import videoConfig from "@/config/videos.json";
+import SectionHeader from "@/components/SectionHeader";
 
 function ComingSoonPlaceholder() {
   return (
@@ -131,19 +132,12 @@ export default function VideoHub() {
 
   return (
     <section id="videos" className="gp-section" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h2
-            className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] mb-2"
-            style={{ fontSize: "clamp(1.8rem, 6vw, 2.5rem)" }}
-          >
-            🎬 Watch
-          </h2>
-          <p className="text-[#f5f5f5]/50 font-[family-name:var(--font-inter)] text-sm">
-            Music videos &amp; pasta cooking classes.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto">
+        <SectionHeader
+          eyebrow="On Screen"
+          title="Watch"
+          subtitle="Music videos & pasta cooking classes."
+        />
 
         {hasVideos ? (
           <>
@@ -154,7 +148,7 @@ export default function VideoHub() {
                   <h3 className="font-[family-name:var(--font-oswald)] uppercase tracking-wider text-[#e63030] mb-3 text-sm font-bold">
                     Music Videos
                   </h3>
-                  <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {videos
                       .filter((v) => v.category === "music")
                       .map((v) => (
@@ -170,7 +164,7 @@ export default function VideoHub() {
                   <h3 className="font-[family-name:var(--font-oswald)] uppercase tracking-wider text-[#ffd700] mb-3 text-sm font-bold">
                     Pasta Cooking Classes
                   </h3>
-                  <div className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {videos
                       .filter((v) => v.category === "cooking")
                       .map((v) => (
@@ -187,7 +181,7 @@ export default function VideoHub() {
         )}
       </div>
 
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }

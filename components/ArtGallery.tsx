@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import artConfig from "@/config/art.json"; // Note: Image import removed; using native img for simplicity
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import artConfig from "@/config/art.json";
+import SectionHeader from "@/components/SectionHeader";
 
 interface Artwork {
   id: string;
@@ -36,36 +38,28 @@ interface Artist {
 
 function ArtworkCard({ artwork }: { artwork: Artwork }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handlePurchase = async () => {
     setIsLoading(true);
+    setErrorMsg(null);
     try {
-      console.log("Purchase clicked for:", artwork.title, artwork.stripeProductId);
-      // Call backend to create Stripe checkout session
+      // Server looks up price + title by product ID — never trust the client
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: artwork.stripeProductId,
-          quantity: 1,
-          title: artwork.title,
-          price: artwork.price,
-        }),
+        body: JSON.stringify({ productId: artwork.stripeProductId }),
       });
 
-      console.log("Checkout API response:", response);
       const data = await response.json();
-      console.log("Checkout data:", data);
-      
+
       if (data.url) {
-        console.log("Redirecting to:", data.url);
         window.location.href = data.url; // Redirect to Stripe checkout
-      } else if (data.error) {
-        alert("Error: " + data.error);
+      } else {
+        setErrorMsg(data.error || "Something went wrong. Please try again.");
       }
-    } catch (error) {
-      console.error("Checkout error:", error);
-      alert("Error processing checkout. Check console for details.");
+    } catch {
+      setErrorMsg("Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -77,18 +71,14 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
       style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}
     >
       {/* Art image */}
-      <div className="w-full aspect-square overflow-hidden bg-[#1a1a1a] flex items-center justify-center">
+      <div className="w-full aspect-square overflow-hidden bg-[#1a1a1a] flex items-center justify-center relative">
         {artwork.image ? (
-          <img
+          <Image
             src={artwork.image}
             alt={artwork.title}
-            loading="lazy"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "center",
-            }}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover object-center"
           />
         ) : (
           <>
@@ -158,7 +148,54 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
             </span>
           )}
         </div>
+        {errorMsg && (
+          <p className="mt-2 text-[#e63030] text-xs font-[family-name:var(--font-inter)]">
+            {errorMsg}
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+function CheckoutBanner() {
+  const [status, setStatus] = useState<"success" | "canceled" | null>(null);
+  const [piece, setPiece] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (checkout === "success" || checkout === "canceled") {
+      setStatus(checkout);
+      setPiece(params.get("piece"));
+      // Clean the query string so a refresh doesn't re-show the banner
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState(null, "", cleanUrl);
+    }
+  }, []);
+
+  if (!status) return null;
+
+  const isSuccess = status === "success";
+  return (
+    <div
+      className="mb-8 rounded-2xl border p-5 text-center"
+      style={{
+        borderColor: isSuccess ? "rgba(29,185,84,0.5)" : "rgba(255,215,0,0.4)",
+        background: isSuccess ? "rgba(29,185,84,0.08)" : "rgba(255,215,0,0.06)",
+      }}
+    >
+      <p
+        className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider mb-1"
+        style={{ color: isSuccess ? "#1DB954" : "#ffd700" }}
+      >
+        {isSuccess ? "🎉 Payment received!" : "Checkout canceled"}
+      </p>
+      <p className="text-[#f5f5f5]/60 text-sm font-[family-name:var(--font-inter)]">
+        {isSuccess
+          ? `${piece ? `"${piece}" is yours. ` : ""}We'll reach out by email to arrange pickup at Graffiti Pasta Denton.`
+          : "No charge was made. The art will be here when you're ready."}
+      </p>
     </div>
   );
 }
@@ -294,7 +331,7 @@ function ArtistSection({ artist }: { artist: Artist }) {
       </div>
 
       {/* Artwork Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {artist.artworks.map((artwork) => (
           <ArtworkCard key={artwork.id} artwork={artwork} />
         ))}
@@ -330,19 +367,14 @@ export default function ArtGallery() {
 
   return (
     <section id="art" className="gp-section" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h2
-            className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] mb-2"
-            style={{ fontSize: "clamp(1.8rem, 6vw, 2.5rem)" }}
-          >
-            🎨 Art Gallery
-          </h2>
-          <p className="text-[#f5f5f5]/50 font-[family-name:var(--font-inter)] text-sm">
-            Local artists. 100% to the creator.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto">
+        <SectionHeader
+          eyebrow="Off the Walls"
+          title="Art Gallery"
+          subtitle="The art hanging in the restaurant, by local artists. 100% of every sale goes to the creator."
+        />
+
+        <CheckoutBanner />
 
         {hasArtists ? (
           <>
@@ -360,7 +392,7 @@ export default function ArtGallery() {
         )}
       </div>
 
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }

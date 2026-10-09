@@ -1,13 +1,16 @@
 import Image from "next/image";
 
+// Order matches the page's section order top-to-bottom; "Visit" rounds
+// out the grid (2x4) and jumps to the location info in the footer
 const navLinks = [
   { label: "🎵 Listen", href: "#music" },
+  { label: "🎮 Games", href: "#games" },
   { label: "👕 Shop", href: "#merch" },
   { label: "🎨 Art", href: "#art" },
   { label: "💬 Comics", href: "#comics" },
   { label: "🎬 Watch", href: "#videos" },
   { label: "🏆 Rewards", href: "#rewards" },
-  { label: "🎮 Games", href: "#games" },
+  { label: "📍 Visit", href: "#visit" },
 ];
 
 export default function Hero() {
@@ -61,7 +64,7 @@ export default function Hero() {
         </p>
 
         {/* Navigation pills grid */}
-        <div className="grid grid-cols-3 gap-3 max-w-sm mx-auto sm:max-w-md lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto sm:max-w-md sm:grid-cols-4">
           {navLinks.map((link) => (
             <a
               key={link.href}

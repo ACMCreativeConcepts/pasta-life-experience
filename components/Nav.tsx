@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from "react";
 
+// Order matches the page's section order top-to-bottom
 const navLinks = [
   { label: "Listen", href: "#music" },
-  { label: "Watch", href: "#videos" },
+  { label: "Games", href: "#games" },
   { label: "Shop", href: "#merch" },
   { label: "Art", href: "#art" },
   { label: "Comics", href: "#comics" },
+  { label: "Watch", href: "#videos" },
   { label: "Rewards", href: "#rewards" },
-  { label: "Games", href: "#games" },
 ];
 
 export default function Nav() {

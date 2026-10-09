@@ -1,4 +1,6 @@
+import Image from "next/image";
 import merchConfig from "@/config/merch.json";
+import SectionHeader from "@/components/SectionHeader";
 
 interface Product {
   id: string;
@@ -34,16 +36,13 @@ function ProductCard({ product }: { product: Product }) {
     >
       {/* Image */}
       {product.image && product.image !== "/merch/gp-tee.jpg" ? (
-        <div className="w-full aspect-square overflow-hidden bg-[#1a1a1a] flex items-center justify-center">
-          <img
+        <div className="w-full aspect-square overflow-hidden bg-[#1a1a1a] relative">
+          <Image
             src={product.image}
             alt={product.title}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "center",
-            }}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover object-center"
           />
         </div>
       ) : (
@@ -112,26 +111,19 @@ export default function MerchSection() {
 
   return (
     <section id="merch" className="gp-section" style={{ backgroundColor: "#0d0d0d" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex items-end justify-between">
-          <div>
-            <h2
-              className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] mb-2"
-              style={{ fontSize: "clamp(1.8rem, 6vw, 2.5rem)" }}
-            >
-              👕 Merch
-            </h2>
-            <p className="text-[#f5f5f5]/50 font-[family-name:var(--font-inter)] text-sm leading-relaxed">
-              Artist Till Death is a local artist group that does all custom hats for Graffiti Pasta. Each hat is one of a kind hand painted and airbrushed. You can purchase these hats in house at Graffiti Pasta. Just ask your bartender.
-            </p>
-          </div>
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-end justify-between gap-4">
+          <SectionHeader
+            eyebrow="Wear the Sauce"
+            title="Merch"
+            subtitle="One-of-a-kind hats, hand-painted and airbrushed by Artist Till Death. Grab yours in house — just ask your bartender."
+          />
           {shopUrl && (
             <a
               href={shopUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs font-[family-name:var(--font-oswald)] uppercase tracking-wider text-[#ff6b1a] hover:underline shrink-0"
+              className="text-xs font-[family-name:var(--font-oswald)] uppercase tracking-wider text-[#ff6b1a] hover:underline shrink-0 mb-10"
             >
               Full Store →
             </a>
@@ -160,7 +152,7 @@ export default function MerchSection() {
         )}
       </div>
 
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }

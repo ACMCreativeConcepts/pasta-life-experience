@@ -15,6 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://pastalifeexperience.com"),
   title: "Pasta Life Experience | Graffiti Pasta",
   description:
     "A full Pasta-verse with music, art, merch & more.",
