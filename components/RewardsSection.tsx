@@ -3,6 +3,7 @@
 // It is a restaurant loyalty points system only.
 
 import SectionHeader from "@/components/SectionHeader";
+import SubscribeForm from "@/components/SubscribeForm";
 
 const earnWays = [
   { emoji: "📱", label: "Scan QR at the table" },
@@ -105,13 +106,7 @@ export default function RewardsSection() {
             Be first to know when GPC launches. Early members get bonus coins on
             day one.
           </p>
-          <a
-            href="mailto:acmcreativeconcepts@gmail.com?subject=GPC Early Access — Join the List&body=I want to be on the Graffiti Pasta Coin early access list!"
-            className="inline-flex items-center gap-2 px-8 py-3 rounded-full font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-sm text-white transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(135deg, #e63030, #ff6b1a)" }}
-          >
-            Get Early Access
-          </a>
+          <SubscribeForm source="rewards" />
         </div>
       </div>
 

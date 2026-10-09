@@ -33,12 +33,6 @@ const upcomingGames: Game[] = [
     color: "#ff6b1a",
   },
   {
-    emoji: "🧠",
-    title: "Pasta Trivia",
-    description: "How much do you actually know about pasta? Prove it.",
-    color: "#e63030",
-  },
-  {
     emoji: "📱",
     title: "QR Scavenger Hunt",
     description: "Hidden QR codes around the restaurant. Find them all. Win stuff.",
@@ -150,6 +144,60 @@ function PlayableGameCard() {
   );
 }
 
+function TriviaGameCard() {
+  return (
+    <a
+      href="/games/trivia"
+      className="relative overflow-hidden rounded-2xl border-2 bg-[#1a1a1a] p-6 flex flex-col gap-4 transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
+      style={{ borderColor: "#e63030" }}
+    >
+      {/* Live badge */}
+      <div className="absolute top-3 right-3 flex items-center gap-1">
+        <span
+          className="text-[10px] font-[family-name:var(--font-oswald)] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+          style={{ background: "rgba(230, 48, 48, 0.25)", color: "#e63030", border: "1px solid #e63030" }}
+        >
+          ✨ LIVE
+        </span>
+      </div>
+
+      {/* Title treatment */}
+      <div className="flex-1 flex flex-col items-center justify-center text-center my-4">
+        <span className="text-5xl mb-3">🧠</span>
+        <p
+          className="font-[family-name:var(--font-oswald)] font-bold uppercase leading-tight"
+          style={{
+            fontSize: "clamp(1.6rem, 5vw, 2.2rem)",
+            background: "linear-gradient(135deg, #e63030, #ff6b1a, #ffd700)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}
+        >
+          Pasta Trivia
+        </p>
+      </div>
+
+      {/* Description */}
+      <p className="text-[#f5f5f5]/70 text-sm font-[family-name:var(--font-inter)] leading-relaxed text-center mb-4">
+        10 questions. Pasta facts and GP deep cuts. How much do you actually
+        know? Prove it.
+      </p>
+
+      {/* Play button */}
+      <span className="mt-auto py-3 px-6 rounded-full text-center font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-sm border-2 border-[#e63030] text-[#e63030] group-hover:bg-[#e63030] group-hover:text-white transition-all">
+        Play Now →
+      </span>
+
+      {/* Color glow */}
+      <div
+        className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full pointer-events-none opacity-20 group-hover:opacity-30 transition-opacity"
+        style={{ background: "#e63030", filter: "blur(30px)" }}
+      />
+    </a>
+  );
+}
+
 export default function GamesSection() {
   return (
     <section id="games" className="gp-section" style={{ backgroundColor: "#0f0f0f" }}>
@@ -158,15 +206,18 @@ export default function GamesSection() {
           center
           eyebrow="The Arcade"
           title="Games"
-          subtitle="The Pasta Life Arcade is under construction. One game live, more incoming."
+          subtitle="The Pasta Life Arcade is open. Two games live, more incoming."
         />
 
-        {/* Tic-Tac-Toe Game — Featured */}
-        <div className="mb-8 max-w-2xl mx-auto">
+        {/* Live games — Featured */}
+        <div className="mb-8 max-w-4xl mx-auto">
           <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest mb-3">
             ▶ NOW PLAYING
           </p>
-          <PlayableGameCard />
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 md:items-stretch">
+            <PlayableGameCard />
+            <TriviaGameCard />
+          </div>
         </div>
 
         {/* Game cards grid */}
