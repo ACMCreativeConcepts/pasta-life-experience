@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import artConfig from "@/config/art.json"; // Note: Image import removed; using native img for simplicity
+import Image from "next/image";
+import artConfig from "@/config/art.json";
+import SectionHeader from "@/components/SectionHeader";
 
 interface Artwork {
   id: string;
@@ -69,18 +71,14 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
       style={{ boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}
     >
       {/* Art image */}
-      <div className="w-full aspect-square overflow-hidden bg-[#1a1a1a] flex items-center justify-center">
+      <div className="w-full aspect-square overflow-hidden bg-[#1a1a1a] flex items-center justify-center relative">
         {artwork.image ? (
-          <img
+          <Image
             src={artwork.image}
             alt={artwork.title}
-            loading="lazy"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "center",
-            }}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover object-center"
           />
         ) : (
           <>
@@ -333,7 +331,7 @@ function ArtistSection({ artist }: { artist: Artist }) {
       </div>
 
       {/* Artwork Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {artist.artworks.map((artwork) => (
           <ArtworkCard key={artwork.id} artwork={artwork} />
         ))}
@@ -369,19 +367,12 @@ export default function ArtGallery() {
 
   return (
     <section id="art" className="gp-section" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h2
-            className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] mb-2"
-            style={{ fontSize: "clamp(1.8rem, 6vw, 2.5rem)" }}
-          >
-            🎨 Art Gallery
-          </h2>
-          <p className="text-[#f5f5f5]/50 font-[family-name:var(--font-inter)] text-sm">
-            Local artists. 100% to the creator.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto">
+        <SectionHeader
+          eyebrow="Off the Walls"
+          title="Art Gallery"
+          subtitle="The art hanging in the restaurant, by local artists. 100% of every sale goes to the creator."
+        />
 
         <CheckoutBanner />
 
@@ -401,7 +392,7 @@ export default function ArtGallery() {
         )}
       </div>
 
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }

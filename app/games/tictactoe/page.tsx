@@ -295,19 +295,19 @@ export default function TicTacToePage() {
           background: 'linear-gradient(180deg, #0d0d0d 0%, #1a0a0a 100%)',
         }}
       >
-        <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-          <h1
+        <div style={{ textAlign: 'center', maxWidth: '440px' }}>
+          <img
+            src="/images/game-assets/tictac-pasta-logo.png"
+            alt="Tic-Tac-Pasta"
             style={{
-              fontSize: 'clamp(2rem, 8vw, 3.5rem)',
-              fontWeight: 800,
-              color: '#f5f5f5',
-              marginBottom: '12px',
-              fontFamily: 'var(--font-oswald)',
-              letterSpacing: '-0.02em',
+              width: '100%',
+              maxWidth: '380px',
+              height: 'auto',
+              margin: '0 auto 16px',
+              display: 'block',
+              filter: 'drop-shadow(0 6px 16px rgba(255, 215, 0, 0.35))',
             }}
-          >
-            🎮 Pasta Life Tic-Tac-Toe
-          </h1>
+          />
           <p
             style={{
               fontSize: '16px',
@@ -315,6 +315,7 @@ export default function TicTacToePage() {
               opacity: 0.7,
               marginBottom: '40px',
               lineHeight: 1.5,
+              fontFamily: 'var(--font-inter)',
             }}
           >
             Bowtie vs. Ravioli. Who will win?

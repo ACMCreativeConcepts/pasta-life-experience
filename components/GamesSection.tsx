@@ -1,3 +1,5 @@
+import SectionHeader from "@/components/SectionHeader";
+
 interface Game {
   emoji: string;
   title: string;
@@ -151,34 +153,16 @@ function PlayableGameCard() {
 export default function GamesSection() {
   return (
     <section id="games" className="gp-section" style={{ backgroundColor: "#0f0f0f" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 text-center">
-          <div
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-[family-name:var(--font-oswald)] font-bold uppercase tracking-widest mb-4 border border-[#2a2a2a]"
-            style={{ color: "rgba(245,245,245,0.6)", background: "rgba(42,42,42,0.5)" }}
-          >
-            Arcade Loading
-          </div>
-          <h2
-            className="font-[family-name:var(--font-oswald)] font-bold uppercase leading-tight mb-3"
-            style={{
-              fontSize: "clamp(1.8rem, 6vw, 2.5rem)",
-              background: "linear-gradient(135deg, #e63030, #ff6b1a, #ffd700)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            GAMES — LOADING...
-          </h2>
-          <p className="text-[#f5f5f5]/50 font-[family-name:var(--font-inter)] text-sm">
-            The Pasta Life Arcade is under construction. Games incoming.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto">
+        <SectionHeader
+          center
+          eyebrow="The Arcade"
+          title="Games"
+          subtitle="The Pasta Life Arcade is under construction. One game live, more incoming."
+        />
 
         {/* Tic-Tac-Toe Game — Featured */}
-        <div className="mb-8">
+        <div className="mb-8 max-w-2xl mx-auto">
           <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest mb-3">
             ▶ NOW PLAYING
           </p>
@@ -190,7 +174,7 @@ export default function GamesSection() {
           <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest mb-3">
             COMING SOON
           </p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingGames.map((game) => (
               <GameCard key={game.title} game={game} />
             ))}
@@ -205,7 +189,7 @@ export default function GamesSection() {
         </div>
       </div>
 
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }

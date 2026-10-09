@@ -1,16 +1,6 @@
 import Image from "next/image";
 import musicConfig from "@/config/music.json";
-
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <h2
-      className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] mb-2"
-      style={{ fontSize: "clamp(1.8rem, 6vw, 2.5rem)" }}
-    >
-      {children}
-    </h2>
-  );
-}
+import SectionHeader from "@/components/SectionHeader";
 
 function AlbumDropCard() {
   const { featuredAlbum } = musicConfig;
@@ -115,59 +105,58 @@ export default function MusicHub() {
 
   return (
     <section id="music" className="gp-section" style={{ backgroundColor: "#0d0d0d" }}>
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <SectionHeader>Music</SectionHeader>
-          <p className="text-[#f5f5f5]/50 font-[family-name:var(--font-inter)] text-sm">
-            Pasta on the track.
-          </p>
+      <div className="max-w-5xl mx-auto">
+        <SectionHeader
+          eyebrow="The Soundtrack"
+          title="Music"
+          subtitle="Pasta on the track. Stream the album, take the dining playlist home."
+        />
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
+          {/* Album drop card */}
+          <AlbumDropCard />
+
+          {/* Embeds column */}
+          <div className="flex flex-col gap-8">
+            {hasAlbumEmbed && (
+              <iframe
+                src={featuredAlbum.spotifyEmbedUrl}
+                width="100%"
+                height="352"
+                style={{ borderRadius: "12px" }}
+                allowFullScreen
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="lazy"
+              />
+            )}
+
+            {hasPlaylist && (
+              <div>
+                <div className="mb-3">
+                  <p className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5]/80 text-lg">
+                    The Dining Playlist
+                  </p>
+                  <p className="text-[#f5f5f5]/40 text-sm font-[family-name:var(--font-inter)] mt-1">
+                    What&apos;s playing in the restaurant every night. Take it home.
+                  </p>
+                </div>
+                <iframe
+                  src={spotifyPlaylistEmbedUrl}
+                  width="100%"
+                  height="352"
+                  style={{ borderRadius: "12px" }}
+                  allowFullScreen
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                />
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Album drop card */}
-        <AlbumDropCard />
-
-        {/* Album embed */}
-        {hasAlbumEmbed && (
-          <div className="mt-6">
-            <iframe
-              src={featuredAlbum.spotifyEmbedUrl}
-              width="100%"
-              height="352"
-              style={{ borderRadius: "12px" }}
-              allowFullScreen
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              loading="lazy"
-            />
-          </div>
-        )}
-
-        {/* Dining playlist */}
-        {hasPlaylist && (
-          <div className="mt-10">
-            <div className="mb-3">
-              <p className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5]/80 text-lg">
-                The Dining Playlist
-              </p>
-              <p className="text-[#f5f5f5]/40 text-sm font-[family-name:var(--font-inter)] mt-1">
-                What&apos;s playing in the restaurant every night. Take it home.
-              </p>
-            </div>
-            <iframe
-              src={spotifyPlaylistEmbedUrl}
-              width="100%"
-              height="352"
-              style={{ borderRadius: "12px" }}
-              allowFullScreen
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              loading="lazy"
-            />
-          </div>
-        )}
       </div>
 
       {/* Section divider */}
-      <div className="mt-16 h-px max-w-2xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
+      <div className="mt-16 h-px max-w-5xl mx-auto" style={{ background: "linear-gradient(90deg, transparent, #2a2a2a, transparent)" }} />
     </section>
   );
 }
