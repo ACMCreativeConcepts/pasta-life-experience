@@ -1,42 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import artConfig from "@/config/art.json";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-04-10",
+  apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
 });
+
+interface CatalogArtwork {
+  id: string;
+  title: string;
+  price?: number;
+  available: boolean;
+  stripeProductId?: string;
+}
+
+// Server-side price lookup. The client only tells us WHICH product —
+// price and title always come from our own config.
+function findArtwork(productId: string): CatalogArtwork | undefined {
+  for (const artist of artConfig.artists) {
+    for (const artwork of artist.artworks as CatalogArtwork[]) {
+      if (artwork.stripeProductId === productId) return artwork;
+    }
+  }
+  return undefined;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    console.log("[Checkout API] Request received");
-    const { productId, quantity = 1, title, price } = await req.json();
-    console.log("[Checkout API] Parsed body:", { productId, quantity, title, price });
+    const { productId } = await req.json();
 
-    if (!productId) {
-      console.error("[Checkout API] Missing productId");
+    if (!productId || typeof productId !== "string") {
       return NextResponse.json(
         { error: "Product ID is required" },
         { status: 400 }
       );
     }
 
-    if (!price || price <= 0) {
-      console.error("[Checkout API] Invalid price:", price);
+    const artwork = findArtwork(productId);
+
+    if (!artwork) {
       return NextResponse.json(
-        { error: "Valid price is required" },
-        { status: 400 }
+        { error: "Unknown product" },
+        { status: 404 }
+      );
+    }
+
+    if (!artwork.available || !artwork.price || artwork.price <= 0) {
+      return NextResponse.json(
+        { error: "This piece is no longer available" },
+        { status: 409 }
       );
     }
 
     if (!process.env.STRIPE_SECRET_KEY) {
       console.error("[Checkout API] STRIPE_SECRET_KEY not set");
       return NextResponse.json(
-        { error: "Stripe secret key not configured. Contact support." },
+        { error: "Checkout is not configured. Contact support." },
         { status: 500 }
       );
     }
 
-    // Create Stripe checkout session
-    console.log("[Checkout API] Creating Stripe session for:", title);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL || "https://pastalifeexperience.com";
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -44,32 +70,29 @@ export async function POST(req: NextRequest) {
           price_data: {
             currency: "usd",
             product_data: {
-              name: title || "Art Piece",
-              metadata: {
-                productId,
-              },
+              name: artwork.title,
+              metadata: { productId },
             },
-            unit_amount: Math.round(price * 100), // Convert dollars to cents
+            unit_amount: Math.round(artwork.price * 100),
           },
-          quantity,
+          quantity: 1,
         },
       ],
       mode: "payment",
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "https://pastalifeexperience.com"}/#art?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "https://pastalifeexperience.com"}/#art?canceled=true`,
+      // Query params must come BEFORE the hash fragment to be readable.
+      success_url: `${baseUrl}/?checkout=success&piece=${encodeURIComponent(artwork.title)}#art`,
+      cancel_url: `${baseUrl}/?checkout=canceled#art`,
       metadata: {
         productId,
-        title,
+        title: artwork.title,
       },
-    } as any);
+    });
 
-    console.log("[Checkout API] Session created successfully:", session.id);
     return NextResponse.json({ url: session.url });
-  } catch (error: any) {
+  } catch (error) {
     console.error("[Checkout API] Stripe error:", error);
-    return NextResponse.json(
-      { error: error.message || "Checkout session creation failed. Check server logs." },
-      { status: 500 }
-    );
+    const message =
+      error instanceof Error ? error.message : "Checkout session creation failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -156,7 +156,7 @@ export default function GamesSection() {
         <div className="mb-8 text-center">
           <div
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-[family-name:var(--font-oswald)] font-bold uppercase tracking-widest mb-4 border border-[#2a2a2a]"
-            style={{ color: "#f5f5f5]/60", background: "rgba(42,42,42,0.5)" }}
+            style={{ color: "rgba(245,245,245,0.6)", background: "rgba(42,42,42,0.5)" }}
           >
             Arcade Loading
           </div>
@@ -180,7 +180,7 @@ export default function GamesSection() {
         {/* Tic-Tac-Toe Game — Featured */}
         <div className="mb-8">
           <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest mb-3">
-            🄙 NOW PLAYING
+            ▶ NOW PLAYING
           </p>
           <PlayableGameCard />
         </div>
@@ -188,7 +188,7 @@ export default function GamesSection() {
         {/* Game cards grid */}
         <div>
           <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest mb-3">
-            🔬 COMING SOON
+            COMING SOON
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {upcomingGames.map((game) => (

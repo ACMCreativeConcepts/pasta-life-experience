@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import artConfig from "@/config/art.json"; // Note: Image import removed; using native img for simplicity
 
 interface Artwork {
@@ -36,36 +36,28 @@ interface Artist {
 
 function ArtworkCard({ artwork }: { artwork: Artwork }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handlePurchase = async () => {
     setIsLoading(true);
+    setErrorMsg(null);
     try {
-      console.log("Purchase clicked for:", artwork.title, artwork.stripeProductId);
-      // Call backend to create Stripe checkout session
+      // Server looks up price + title by product ID — never trust the client
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: artwork.stripeProductId,
-          quantity: 1,
-          title: artwork.title,
-          price: artwork.price,
-        }),
+        body: JSON.stringify({ productId: artwork.stripeProductId }),
       });
 
-      console.log("Checkout API response:", response);
       const data = await response.json();
-      console.log("Checkout data:", data);
-      
+
       if (data.url) {
-        console.log("Redirecting to:", data.url);
         window.location.href = data.url; // Redirect to Stripe checkout
-      } else if (data.error) {
-        alert("Error: " + data.error);
+      } else {
+        setErrorMsg(data.error || "Something went wrong. Please try again.");
       }
-    } catch (error) {
-      console.error("Checkout error:", error);
-      alert("Error processing checkout. Check console for details.");
+    } catch {
+      setErrorMsg("Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -158,7 +150,54 @@ function ArtworkCard({ artwork }: { artwork: Artwork }) {
             </span>
           )}
         </div>
+        {errorMsg && (
+          <p className="mt-2 text-[#e63030] text-xs font-[family-name:var(--font-inter)]">
+            {errorMsg}
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+function CheckoutBanner() {
+  const [status, setStatus] = useState<"success" | "canceled" | null>(null);
+  const [piece, setPiece] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (checkout === "success" || checkout === "canceled") {
+      setStatus(checkout);
+      setPiece(params.get("piece"));
+      // Clean the query string so a refresh doesn't re-show the banner
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState(null, "", cleanUrl);
+    }
+  }, []);
+
+  if (!status) return null;
+
+  const isSuccess = status === "success";
+  return (
+    <div
+      className="mb-8 rounded-2xl border p-5 text-center"
+      style={{
+        borderColor: isSuccess ? "rgba(29,185,84,0.5)" : "rgba(255,215,0,0.4)",
+        background: isSuccess ? "rgba(29,185,84,0.08)" : "rgba(255,215,0,0.06)",
+      }}
+    >
+      <p
+        className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider mb-1"
+        style={{ color: isSuccess ? "#1DB954" : "#ffd700" }}
+      >
+        {isSuccess ? "🎉 Payment received!" : "Checkout canceled"}
+      </p>
+      <p className="text-[#f5f5f5]/60 text-sm font-[family-name:var(--font-inter)]">
+        {isSuccess
+          ? `${piece ? `"${piece}" is yours. ` : ""}We'll reach out by email to arrange pickup at Graffiti Pasta Denton.`
+          : "No charge was made. The art will be here when you're ready."}
+      </p>
     </div>
   );
 }
@@ -343,6 +382,8 @@ export default function ArtGallery() {
             Local artists. 100% to the creator.
           </p>
         </div>
+
+        <CheckoutBanner />
 
         {hasArtists ? (
           <>
