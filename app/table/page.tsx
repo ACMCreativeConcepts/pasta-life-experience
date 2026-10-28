@@ -115,7 +115,7 @@ export default function TablePage() {
             Weekly strips by Svaya — she might be the one bringing your food.
           </p>
           <a
-            href="/#comics"
+            href="/comics"
             className="block text-center py-3 px-6 rounded-full font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-sm border border-[#ff6b1a]/60 text-[#ff6b1a] hover:bg-[#ff6b1a]/10 transition-all"
           >
             Read a Strip
