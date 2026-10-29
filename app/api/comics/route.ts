@@ -24,6 +24,7 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_PANELS = 8;
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE });
@@ -81,18 +82,26 @@ export async function POST(req: NextRequest) {
       return json({ error: "Blob storage isn't connected to this project yet." }, 503);
     }
 
-    const file = form.get("file");
+    // Panels in reading order: "files" (repeated) or the single legacy "file"
+    const files = [...form.getAll("files"), form.get("file")].filter(
+      (f): f is File => f instanceof File
+    );
     const title = String(form.get("title") || "").trim();
     const date = String(form.get("date") || "").trim();
 
-    if (!(file instanceof File)) {
+    if (files.length === 0) {
       return json({ error: "No image attached." }, 400);
     }
-    if (!ALLOWED_TYPES[file.type]) {
-      return json({ error: "Image must be a JPG, PNG, or WebP." }, 400);
+    if (files.length > MAX_PANELS) {
+      return json({ error: `Max ${MAX_PANELS} panels per comic.` }, 400);
     }
-    if (file.size > MAX_BYTES) {
-      return json({ error: "Image is too large (max 10MB)." }, 400);
+    for (const f of files) {
+      if (!ALLOWED_TYPES[f.type]) {
+        return json({ error: "Every panel must be a JPG, PNG, or WebP." }, 400);
+      }
+      if (f.size > MAX_BYTES) {
+        return json({ error: "A panel is too large (max 10MB each)." }, 400);
+      }
     }
     if (!title || title.length > 120) {
       return json({ error: "Please give the comic a title (up to 120 characters)." }, 400);
@@ -108,17 +117,34 @@ export async function POST(req: NextRequest) {
         .replace(/^-+|-+$/g, "")
         .slice(0, 60) || "comic";
 
-    const blob = await put(
-      `${STRIP_PREFIX}${date}-${slug}.${ALLOWED_TYPES[file.type]}`,
-      file,
-      { access: "public", addRandomSuffix: true }
-    );
+    // Upload every panel; if a later one fails, clean up the earlier ones.
+    const panelUrls: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const suffix = files.length > 1 ? `-p${i + 1}` : "";
+        const blob = await put(
+          `${STRIP_PREFIX}${date}-${slug}${suffix}.${ALLOWED_TYPES[f.type]}`,
+          f,
+          { access: "public", addRandomSuffix: true }
+        );
+        panelUrls.push(blob.url);
+      }
+    } catch (error) {
+      console.error("[Comics API] Panel upload failed:", error);
+      await Promise.allSettled(panelUrls.map((u) => del(u)));
+      return json(
+        { error: "The image upload failed — nothing was published. Try again." },
+        500
+      );
+    }
 
     const entry: ComicEntry = {
       id: `${date}-${slug}-${Date.now().toString(36)}`,
       title,
       date,
-      image: blob.url,
+      image: panelUrls[0],
+      ...(panelUrls.length > 1 ? { images: panelUrls } : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -136,11 +162,12 @@ export async function POST(req: NextRequest) {
       await head(entryPath(entry.id));
     } catch (error) {
       console.error("[Comics API] Entry save/confirm failed:", error);
-      try {
-        await del(blob.url);
-      } catch (cleanupError) {
-        console.error("[Comics API] Image cleanup also failed:", cleanupError);
-      }
+      const cleanup = await Promise.allSettled(panelUrls.map((u) => del(u)));
+      cleanup
+        .filter((r) => r.status === "rejected")
+        .forEach((r) =>
+          console.error("[Comics API] Image cleanup also failed:", r)
+        );
       return json(
         { error: "The comic couldn't be saved — nothing was published. Try again." },
         500
@@ -189,18 +216,20 @@ export async function DELETE(req: NextRequest) {
     // Only delete images in this environment's own strip folder. Blob-store
     // URLs outside it (e.g. production images listed on a preview deploy via
     // the migrated manifest) are left alone; repo files are never touched.
-    let imagePath = "";
-    try {
-      imagePath = new URL(entry.image).pathname;
-    } catch {}
-    if (
-      entry.image.includes("blob.vercel-storage.com") &&
-      imagePath.startsWith(`/${STRIP_PREFIX}`)
-    ) {
+    for (const imageUrl of entry.images?.length ? entry.images : [entry.image]) {
+      let imagePath = "";
       try {
-        await del(entry.image);
-      } catch (error) {
-        console.error("[Comics API] Image delete failed (entry removed):", error);
+        imagePath = new URL(imageUrl).pathname;
+      } catch {}
+      if (
+        imageUrl.includes("blob.vercel-storage.com") &&
+        imagePath.startsWith(`/${STRIP_PREFIX}`)
+      ) {
+        try {
+          await del(imageUrl);
+        } catch (error) {
+          console.error("[Comics API] Image delete failed (entry removed):", error);
+        }
       }
     }
 

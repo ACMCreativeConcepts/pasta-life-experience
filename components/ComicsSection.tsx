@@ -43,7 +43,6 @@ export default async function ComicsSection() {
                 alt={latest.title}
                 loading="lazy"
                 className="w-full h-auto block mx-auto"
-                style={{ maxHeight: "70vh", width: "auto", maxWidth: "100%" }}
               />
               <div
                 className="mt-5 text-center border-t pt-4"

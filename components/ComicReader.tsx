@@ -4,9 +4,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { type ComicEntry } from "@/lib/comics";
 import { formatComicDate } from "@/lib/dates";
 
+/** All panels of a strip, in reading order. */
+function panelsOf(comic: ComicEntry): string[] {
+  return comic.images?.length ? comic.images : [comic.image];
+}
+
 /**
- * One strip at a time, big, on paper — Far Side rules.
- * Arrows / keyboard left-right / swipe to move between weeks.
+ * One strip at a time, big, on paper — Far Side rules. Multi-panel strips
+ * stack their panels top-to-bottom on the same sheet.
+ *
+ * Navigation reads like flipping a daily calendar: you start on this week's
+ * strip and each flip to the RIGHT goes one strip further back — the same
+ * direction as the archive row and the page counter. Left brings you back
+ * toward this week.
  */
 export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
   // Index 0 is the newest strip
@@ -25,8 +35,9 @@ export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") older();
-      if (e.key === "ArrowRight") newer();
+      // Right = continue back through the archive; left = toward this week
+      if (e.key === "ArrowRight") older();
+      if (e.key === "ArrowLeft") newer();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -36,8 +47,10 @@ export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
   useEffect(() => {
     [comics[idx - 1], comics[idx + 1]].forEach((c) => {
       if (c) {
-        const img = new window.Image();
-        img.src = c.image;
+        panelsOf(c).forEach((src) => {
+          const img = new window.Image();
+          img.src = src;
+        });
       }
     });
   }, [idx, comics]);
@@ -62,18 +75,26 @@ export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
           const dx = e.changedTouches[0].clientX - touchX.current;
           touchX.current = null;
           if (Math.abs(dx) < 50) return;
-          // Swipe left → next (newer is to the right, like a calendar)
-          if (dx < 0) newer();
-          else older();
+          // Swipe left = flip right = further back; swipe right = toward this week
+          if (dx < 0) older();
+          else newer();
         }}
       >
-        <img
-          key={comic.id}
-          src={comic.image}
-          alt={comic.title}
-          className="w-full h-auto block mx-auto"
-          style={{ maxHeight: "72vh", width: "auto", maxWidth: "100%" }}
-        />
+        {/* Panels, full width, in reading order */}
+        <div className="flex flex-col gap-4">
+          {panelsOf(comic).map((src, i) => (
+            <img
+              key={`${comic.id}-${i}`}
+              src={src}
+              alt={
+                panelsOf(comic).length > 1
+                  ? `${comic.title} — panel ${i + 1}`
+                  : comic.title
+              }
+              className="w-full h-auto block"
+            />
+          ))}
+        </div>
 
         {/* Syndication line */}
         <div className="mt-5 text-center border-t pt-4" style={{ borderColor: "#d8cfb8" }}>
@@ -95,9 +116,9 @@ export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
       {/* Navigation */}
       <div className="flex items-center justify-center gap-6 mt-6">
         <button
-          onClick={older}
-          disabled={!hasOlder}
-          aria-label="Older comic"
+          onClick={newer}
+          disabled={!hasNewer}
+          aria-label="Newer comic (toward this week)"
           className="w-12 h-12 rounded-full border border-[#2a2a2a] bg-[#1a1a1a] text-[#f5f5f5] text-xl leading-none transition-colors enabled:hover:bg-[#e63030] enabled:hover:border-[#e63030] disabled:opacity-25"
         >
           ←
@@ -106,16 +127,16 @@ export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
           {idx === 0 ? "This Week" : `${idx + 1} of ${comics.length}`}
         </span>
         <button
-          onClick={newer}
-          disabled={!hasNewer}
-          aria-label="Newer comic"
+          onClick={older}
+          disabled={!hasOlder}
+          aria-label="Older comic (back through the archive)"
           className="w-12 h-12 rounded-full border border-[#2a2a2a] bg-[#1a1a1a] text-[#f5f5f5] text-xl leading-none transition-colors enabled:hover:bg-[#e63030] enabled:hover:border-[#e63030] disabled:opacity-25"
         >
           →
         </button>
       </div>
       <p className="text-center text-[#f5f5f5]/25 text-[11px] font-[family-name:var(--font-inter)] mt-2">
-        Swipe or use ← → keys
+        Swipe or use ← → keys &middot; → flips back through the archive
       </p>
 
       {/* Archive */}

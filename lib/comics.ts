@@ -5,8 +5,10 @@ export interface ComicEntry {
   title: string;
   /** Publish date as a plain YYYY-MM-DD calendar date */
   date: string;
-  /** The strip itself */
+  /** The strip itself (first panel for multi-panel strips) */
   image: string;
+  /** All panels in reading order, for multi-panel strips */
+  images?: string[];
   /** Optional archive thumbnail (defaults to the strip) */
   thumb?: string;
   /** When the entry was uploaded (ISO timestamp) */
@@ -92,6 +94,10 @@ function parseEntry(raw: unknown): ComicEntry | null {
     date: e.date,
     image: e.image,
   };
+  if (Array.isArray(e.images)) {
+    const images = e.images.filter((s): s is string => typeof s === "string");
+    if (images.length) entry.images = images;
+  }
   if (typeof e.thumb === "string") entry.thumb = e.thumb;
   if (typeof e.createdAt === "string") entry.createdAt = e.createdAt;
   return entry;

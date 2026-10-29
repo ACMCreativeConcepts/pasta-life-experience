@@ -45,8 +45,7 @@ export default function ComicsAdminPage() {
   const [passcode, setPasscode] = useState("");
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [panels, setPanels] = useState<{ file: File; preview: string }[]>([]);
   const [status, setStatus] = useState<"idle" | "publishing" | "done">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [comics, setComics] = useState<ComicRow[]>([]);
@@ -73,17 +72,48 @@ export default function ComicsAdminPage() {
     } catch {}
   };
 
-  const onPickFile = (f: File | null) => {
-    setFile(f);
-    setPreview((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return f ? URL.createObjectURL(f) : null;
+  const MAX_PANELS = 8;
+
+  const addPanels = (list: FileList | null) => {
+    if (!list) return;
+    setPanels((old) => {
+      const next = [...old];
+      for (const f of Array.from(list)) {
+        if (next.length >= MAX_PANELS) break;
+        next.push({ file: f, preview: URL.createObjectURL(f) });
+      }
+      return next;
+    });
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const removePanel = (i: number) => {
+    setPanels((old) => {
+      URL.revokeObjectURL(old[i].preview);
+      return old.filter((_, j) => j !== i);
+    });
+  };
+
+  const movePanel = (i: number, dir: -1 | 1) => {
+    setPanels((old) => {
+      const j = i + dir;
+      if (j < 0 || j >= old.length) return old;
+      const next = [...old];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const clearPanels = () => {
+    setPanels((old) => {
+      old.forEach((p) => URL.revokeObjectURL(p.preview));
+      return [];
     });
   };
 
   const publish = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
+    if (panels.length === 0) {
       setMessage("Pick the comic image first.");
       return;
     }
@@ -112,15 +142,17 @@ export default function ComicsAdminPage() {
         sessionStorage.setItem("gp-comics-passcode", passcode);
       } catch {}
 
-      const blob = await prepareImage(file);
       const form = new FormData();
       form.append("passcode", passcode);
       form.append("title", title);
       form.append("date", date);
-      form.append(
-        "file",
-        new File([blob], file.name, { type: blob.type || file.type })
-      );
+      for (const p of panels) {
+        const blob = await prepareImage(p.file);
+        form.append(
+          "files",
+          new File([blob], p.file.name, { type: blob.type || p.file.type })
+        );
+      }
 
       const res = await fetch("/api/comics", { method: "POST", body: form });
       const data = await res.json();
@@ -143,7 +175,7 @@ export default function ComicsAdminPage() {
         });
         setStatus("done");
         setTitle("");
-        onPickFile(null);
+        clearPanels();
         if (fileInput.current) fileInput.current.value = "";
       } else if (res.ok) {
         setStatus("idle");
@@ -242,17 +274,76 @@ export default function ComicsAdminPage() {
             </div>
 
             <div>
-              <label className={labelCls}>Comic image</label>
+              <label className={labelCls}>
+                Comic image{panels.length > 1 ? "s" : ""}
+                {panels.length > 0 && (
+                  <span className="text-[#f5f5f5]/35 normal-case tracking-normal">
+                    {" "}
+                    — {panels.length} panel{panels.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </label>
               <input
                 ref={fileInput}
                 type="file"
+                multiple
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+                onChange={(e) => addPanels(e.target.files)}
                 className="block w-full text-sm text-[#f5f5f5]/60 font-[family-name:var(--font-inter)] file:mr-3 file:py-2.5 file:px-5 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#2a2a2a] file:text-[#f5f5f5] hover:file:bg-[#3a3a3a] file:cursor-pointer"
               />
-              {preview && (
-                <div className="mt-3 rounded-xl overflow-hidden border border-[#2a2a2a]" style={{ background: "#f7f2e5" }}>
-                  <img src={preview} alt="Preview" className="w-full h-auto" />
+              <p className="mt-1.5 text-[#f5f5f5]/35 text-xs font-[family-name:var(--font-inter)]">
+                One image, or every panel of a multi-panel strip (up to {MAX_PANELS}).
+                Readers see them top to bottom in the order below — use the arrows
+                to fix the order.
+              </p>
+              {panels.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {panels.map((p, i) => (
+                    <div
+                      key={p.preview}
+                      className="rounded-xl overflow-hidden border border-[#2a2a2a]"
+                      style={{ background: "#f7f2e5" }}
+                    >
+                      <img src={p.preview} alt={`Panel ${i + 1}`} className="w-full h-auto" />
+                      <div className="flex items-center justify-between px-3 py-2 bg-[#1a1a1a] border-t border-[#2a2a2a]">
+                        <span className="text-[#f5f5f5]/50 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest">
+                          Panel {i + 1} of {panels.length}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          {panels.length > 1 && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => movePanel(i, -1)}
+                                disabled={i === 0}
+                                aria-label={`Move panel ${i + 1} up`}
+                                className="text-[#f5f5f5]/60 hover:text-[#ff6b1a] disabled:opacity-20 text-base leading-none"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => movePanel(i, 1)}
+                                disabled={i === panels.length - 1}
+                                aria-label={`Move panel ${i + 1} down`}
+                                className="text-[#f5f5f5]/60 hover:text-[#ff6b1a] disabled:opacity-20 text-base leading-none"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removePanel(i)}
+                            aria-label={`Remove panel ${i + 1}`}
+                            className="text-xs font-[family-name:var(--font-oswald)] uppercase tracking-wider text-[#e63030]/70 hover:text-[#e63030]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
