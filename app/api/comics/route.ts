@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { put, del } from "@vercel/blob";
+import { del, head, put } from "@vercel/blob";
 import { revalidatePath } from "next/cache";
-import { getComics, getManifest, MANIFEST_PATH, type ComicEntry } from "@/lib/comics";
+import {
+  ComicsReadError,
+  STRIP_PREFIX,
+  entryPath,
+  getComics,
+  getLegacyComics,
+  getUploadedComics,
+  saveEntry,
+  sortComics,
+  type ComicEntry,
+} from "@/lib/comics";
+import { isValidYmd } from "@/lib/dates";
+
+export const dynamic = "force-dynamic";
+
+const NO_STORE = { "Cache-Control": "no-store" };
 
 const ALLOWED_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -9,40 +24,51 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_PANELS = 8;
+
+function json(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: NO_STORE });
+}
 
 function checkPasscode(passcode: unknown): NextResponse | null {
   const expected = process.env.COMICS_UPLOAD_CODE;
   if (!expected) {
-    return NextResponse.json(
+    return json(
       { error: "Comic uploads aren't configured yet (COMICS_UPLOAD_CODE missing)." },
-      { status: 503 }
+      503
     );
   }
   if (typeof passcode !== "string" || passcode !== expected) {
-    return NextResponse.json({ error: "Wrong passcode." }, { status: 401 });
+    return json({ error: "Wrong passcode." }, 401);
   }
   return null;
-}
-
-async function saveManifest(entries: ComicEntry[]) {
-  await put(MANIFEST_PATH, JSON.stringify(entries), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-    cacheControlMaxAge: 60,
-  });
 }
 
 function revalidateComicPages() {
   revalidatePath("/");
   revalidatePath("/comics");
-  revalidatePath("/table");
+}
+
+/** Fresh merged list; after a confirmed write, `ensure` is added if list() lags. */
+async function freshComics(ensure?: ComicEntry): Promise<ComicEntry[]> {
+  const uploaded = await getUploadedComics();
+  if (ensure && !uploaded.some((e) => e.id === ensure.id)) {
+    uploaded.push(ensure);
+  }
+  return sortComics([...uploaded, ...getLegacyComics()]);
 }
 
 export async function GET() {
-  const comics = await getComics();
-  return NextResponse.json({ comics });
+  try {
+    const comics = await getComics();
+    return json({ comics });
+  } catch (error) {
+    console.error("[Comics API] Read failed:", error);
+    return json(
+      { error: "The comics archive couldn't be read right now. Try again in a minute." },
+      503
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -53,39 +79,35 @@ export async function POST(req: NextRequest) {
     if (denied) return denied;
 
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return NextResponse.json(
-        { error: "Blob storage isn't connected to this project yet." },
-        { status: 503 }
-      );
+      return json({ error: "Blob storage isn't connected to this project yet." }, 503);
     }
 
-    const file = form.get("file");
+    // Panels in reading order: "files" (repeated) or the single legacy "file"
+    const files = [...form.getAll("files"), form.get("file")].filter(
+      (f): f is File => f instanceof File
+    );
     const title = String(form.get("title") || "").trim();
     const date = String(form.get("date") || "").trim();
 
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No image attached." }, { status: 400 });
+    if (files.length === 0) {
+      return json({ error: "No image attached." }, 400);
     }
-    if (!ALLOWED_TYPES[file.type]) {
-      return NextResponse.json(
-        { error: "Image must be a JPG, PNG, or WebP." },
-        { status: 400 }
-      );
+    if (files.length > MAX_PANELS) {
+      return json({ error: `Max ${MAX_PANELS} panels per comic.` }, 400);
     }
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json(
-        { error: "Image is too large (max 10MB)." },
-        { status: 400 }
-      );
+    for (const f of files) {
+      if (!ALLOWED_TYPES[f.type]) {
+        return json({ error: "Every panel must be a JPG, PNG, or WebP." }, 400);
+      }
+      if (f.size > MAX_BYTES) {
+        return json({ error: "A panel is too large (max 10MB each)." }, 400);
+      }
     }
     if (!title || title.length > 120) {
-      return NextResponse.json(
-        { error: "Please give the comic a title (up to 120 characters)." },
-        { status: 400 }
-      );
+      return json({ error: "Please give the comic a title (up to 120 characters)." }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return NextResponse.json({ error: "Invalid date." }, { status: 400 });
+    if (!isValidYmd(date)) {
+      return json({ error: `"${date}" isn't a real date — use the date picker.` }, 400);
     }
 
     const slug =
@@ -95,30 +117,79 @@ export async function POST(req: NextRequest) {
         .replace(/^-+|-+$/g, "")
         .slice(0, 60) || "comic";
 
-    const blob = await put(
-      `comics/strips/${date}-${slug}.${ALLOWED_TYPES[file.type]}`,
-      file,
-      { access: "public", addRandomSuffix: true }
-    );
+    // Upload every panel; if a later one fails, clean up the earlier ones.
+    const panelUrls: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const suffix = files.length > 1 ? `-p${i + 1}` : "";
+        const blob = await put(
+          `${STRIP_PREFIX}${date}-${slug}${suffix}.${ALLOWED_TYPES[f.type]}`,
+          f,
+          { access: "public", addRandomSuffix: true }
+        );
+        panelUrls.push(blob.url);
+      }
+    } catch (error) {
+      console.error("[Comics API] Panel upload failed:", error);
+      await Promise.allSettled(panelUrls.map((u) => del(u)));
+      return json(
+        { error: "The image upload failed — nothing was published. Try again." },
+        500
+      );
+    }
 
     const entry: ComicEntry = {
       id: `${date}-${slug}-${Date.now().toString(36)}`,
       title,
       date,
-      image: blob.url,
+      image: panelUrls[0],
+      ...(panelUrls.length > 1 ? { images: panelUrls } : {}),
+      createdAt: new Date().toISOString(),
     };
 
-    const manifest = await getManifest();
-    await saveManifest([entry, ...manifest]);
+    // Save the entry and confirm it actually landed (head() reads the store
+    // directly, not the CDN). If anything fails, clean up the image and
+    // report failure — never claim success for an unconfirmed save.
+    try {
+      if (
+        process.env.VERCEL_ENV !== "production" &&
+        form.get("__test_fail_entry") === "1"
+      ) {
+        throw new Error("Forced entry-write failure (preview test hook)");
+      }
+      await saveEntry(entry);
+      await head(entryPath(entry.id));
+    } catch (error) {
+      console.error("[Comics API] Entry save/confirm failed:", error);
+      const cleanup = await Promise.allSettled(panelUrls.map((u) => del(u)));
+      cleanup
+        .filter((r) => r.status === "rejected")
+        .forEach((r) =>
+          console.error("[Comics API] Image cleanup also failed:", r)
+        );
+      return json(
+        { error: "The comic couldn't be saved — nothing was published. Try again." },
+        500
+      );
+    }
+
     revalidateComicPages();
 
-    return NextResponse.json({ ok: true, entry });
+    let comics: ComicEntry[];
+    try {
+      comics = await freshComics(entry);
+    } catch (error) {
+      // The save is confirmed; only the fresh listing failed. Return what we
+      // know for sure so the admin UI stays truthful.
+      console.error("[Comics API] Post-save listing failed:", error);
+      comics = sortComics([entry, ...getLegacyComics()]);
+    }
+
+    return json({ ok: true, entry, comics });
   } catch (error) {
     console.error("[Comics API] Upload failed:", error);
-    return NextResponse.json(
-      { error: "Upload failed. Please try again." },
-      { status: 500 }
-    );
+    return json({ error: "Upload failed. Please try again." }, 500);
   }
 }
 
@@ -130,35 +201,66 @@ export async function DELETE(req: NextRequest) {
     if (denied) return denied;
 
     if (typeof id !== "string" || id.startsWith("legacy-")) {
-      return NextResponse.json(
-        { error: "That comic can't be removed from here." },
-        { status: 400 }
-      );
+      return json({ error: "That comic can't be removed from here." }, 400);
     }
 
-    const manifest = await getManifest();
-    const entry = manifest.find((c) => c.id === id);
+    // Read first; a failed read throws to the 500 below and nothing is written.
+    const uploaded = await getUploadedComics();
+    const entry = uploaded.find((c) => c.id === id);
     if (!entry) {
-      return NextResponse.json({ error: "Comic not found." }, { status: 404 });
+      return json({ error: "Comic not found." }, 404);
     }
 
-    await saveManifest(manifest.filter((c) => c.id !== id));
-    // Only delete blobs we uploaded (never repo files)
-    if (entry.image.includes("blob.vercel-storage.com")) {
+    await del(entryPath(id));
+
+    // Only delete images in this environment's own strip folder. Blob-store
+    // URLs outside it (e.g. production images listed on a preview deploy via
+    // the migrated manifest) are left alone; repo files are never touched.
+    for (const imageUrl of entry.images?.length ? entry.images : [entry.image]) {
+      let imagePath = "";
       try {
-        await del(entry.image);
-      } catch (error) {
-        console.error("[Comics API] Blob delete failed (manifest updated):", error);
+        imagePath = new URL(imageUrl).pathname;
+      } catch {}
+      if (
+        imageUrl.includes("blob.vercel-storage.com") &&
+        imagePath.startsWith(`/${STRIP_PREFIX}`)
+      ) {
+        try {
+          await del(imageUrl);
+        } catch (error) {
+          console.error("[Comics API] Image delete failed (entry removed):", error);
+        }
       }
     }
+
     revalidateComicPages();
 
-    return NextResponse.json({ ok: true });
+    let comics: ComicEntry[];
+    try {
+      const fresh = await getUploadedComics();
+      comics = sortComics([
+        ...fresh.filter((c) => c.id !== id),
+        ...getLegacyComics(),
+      ]);
+    } catch (error) {
+      console.error("[Comics API] Post-delete listing failed:", error);
+      comics = sortComics([
+        ...uploaded.filter((c) => c.id !== id),
+        ...getLegacyComics(),
+      ]);
+    }
+
+    return json({ ok: true, comics });
   } catch (error) {
+    const blocked = error instanceof ComicsReadError;
     console.error("[Comics API] Delete failed:", error);
-    return NextResponse.json(
-      { error: "Delete failed. Please try again." },
-      { status: 500 }
+    return json(
+      {
+        error: blocked
+          ? "The archive couldn't be read, so nothing was removed. Try again in a minute."
+          : "Delete failed. Please try again.",
+      },
+      blocked ? 503 : 500
     );
   }
 }

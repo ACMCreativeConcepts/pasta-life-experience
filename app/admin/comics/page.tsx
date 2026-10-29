@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { todayInChicago, isValidYmd, formatComicDateShort } from "@/lib/dates";
 
 interface ComicRow {
   id: string;
@@ -11,11 +12,11 @@ interface ComicRow {
   legacy?: boolean;
 }
 
-/** Default to today if it's Sunday, otherwise the coming Sunday. */
-function defaultSunday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-  return d.toISOString().slice(0, 10);
+interface PublishResult {
+  title: string;
+  date: string;
+  position: number;
+  total: number;
 }
 
 /** Downscale big phone photos client-side so uploads stay light. */
@@ -43,15 +44,18 @@ const labelCls =
 export default function ComicsAdminPage() {
   const [passcode, setPasscode] = useState("");
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(defaultSunday());
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [date, setDate] = useState("");
+  const [panels, setPanels] = useState<{ file: File; preview: string }[]>([]);
   const [status, setStatus] = useState<"idle" | "publishing" | "done">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [comics, setComics] = useState<ComicRow[]>([]);
+  const [published, setPublished] = useState<PublishResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Set in an effect (not useState) so the server-rendered HTML and the
+    // client agree even when they sit in different timezones.
+    setDate(todayInChicago());
     try {
       const saved = sessionStorage.getItem("gp-comics-passcode");
       if (saved) setPasscode(saved);
@@ -63,24 +67,74 @@ export default function ComicsAdminPage() {
     try {
       const res = await fetch("/api/comics");
       const data = await res.json();
-      if (Array.isArray(data.comics)) setComics(data.comics);
+      if (res.ok && Array.isArray(data.comics)) setComics(data.comics);
+      else if (data?.error) setMessage(data.error);
     } catch {}
   };
 
-  const onPickFile = (f: File | null) => {
-    setFile(f);
-    setPreview((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return f ? URL.createObjectURL(f) : null;
+  const MAX_PANELS = 8;
+
+  const addPanels = (list: FileList | null) => {
+    if (!list) return;
+    setPanels((old) => {
+      const next = [...old];
+      for (const f of Array.from(list)) {
+        if (next.length >= MAX_PANELS) break;
+        next.push({ file: f, preview: URL.createObjectURL(f) });
+      }
+      return next;
+    });
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const removePanel = (i: number) => {
+    setPanels((old) => {
+      URL.revokeObjectURL(old[i].preview);
+      return old.filter((_, j) => j !== i);
+    });
+  };
+
+  const movePanel = (i: number, dir: -1 | 1) => {
+    setPanels((old) => {
+      const j = i + dir;
+      if (j < 0 || j >= old.length) return old;
+      const next = [...old];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const clearPanels = () => {
+    setPanels((old) => {
+      old.forEach((p) => URL.revokeObjectURL(p.preview));
+      return [];
     });
   };
 
   const publish = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
+    if (panels.length === 0) {
       setMessage("Pick the comic image first.");
       return;
     }
+    if (!isValidYmd(date)) {
+      setMessage(`"${date}" isn't a real date — use the picker.`);
+      return;
+    }
+    const dupe = comics.find(
+      (c) =>
+        c.title.trim().toLowerCase() === title.trim().toLowerCase() &&
+        c.date === date
+    );
+    if (
+      dupe &&
+      !window.confirm(
+        `"${dupe.title}" dated ${formatComicDateShort(dupe.date)} is already on the site. Post it again anyway?`
+      )
+    ) {
+      return;
+    }
+
     setStatus("publishing");
     setMessage(null);
     try {
@@ -88,28 +142,50 @@ export default function ComicsAdminPage() {
         sessionStorage.setItem("gp-comics-passcode", passcode);
       } catch {}
 
-      const blob = await prepareImage(file);
       const form = new FormData();
       form.append("passcode", passcode);
       form.append("title", title);
       form.append("date", date);
-      form.append(
-        "file",
-        new File([blob], file.name, { type: blob.type || file.type })
-      );
+      for (const p of panels) {
+        const blob = await prepareImage(p.file);
+        form.append(
+          "files",
+          new File([blob], p.file.name, { type: blob.type || p.file.type })
+        );
+      }
 
       const res = await fetch("/api/comics", { method: "POST", body: form });
       const data = await res.json();
 
-      if (res.ok) {
+      const confirmed =
+        res.ok &&
+        data?.ok === true &&
+        data?.entry?.id &&
+        Array.isArray(data.comics) &&
+        data.comics.some((c: ComicRow) => c.id === data.entry.id);
+
+      if (confirmed) {
+        const idx = data.comics.findIndex((c: ComicRow) => c.id === data.entry.id);
+        setComics(data.comics);
+        setPublished({
+          title: data.entry.title,
+          date: data.entry.date,
+          position: idx + 1,
+          total: data.comics.length,
+        });
         setStatus("done");
         setTitle("");
-        onPickFile(null);
+        clearPanels();
         if (fileInput.current) fileInput.current.value = "";
+      } else if (res.ok) {
+        setStatus("idle");
+        setMessage(
+          "Saved state couldn't be confirmed — refresh the list before posting again."
+        );
         refreshList();
       } else {
         setStatus("idle");
-        setMessage(data.error || "Upload failed. Try again.");
+        setMessage(data?.error || "Upload failed. Try again.");
       }
     } catch {
       setStatus("idle");
@@ -126,12 +202,18 @@ export default function ComicsAdminPage() {
         body: JSON.stringify({ id: comic.id, passcode }),
       });
       const data = await res.json();
-      if (res.ok) refreshList();
-      else setMessage(data.error || "Delete failed.");
+      if (res.ok && data?.ok === true && Array.isArray(data.comics)) {
+        setComics(data.comics);
+      } else {
+        setMessage(data?.error || "Delete failed.");
+        refreshList();
+      }
     } catch {
       setMessage("Delete failed. Try again.");
     }
   };
+
+  const isNewest = published !== null && published.position === 1;
 
   return (
     <main
@@ -144,17 +226,19 @@ export default function ComicsAdminPage() {
             GP Team Only
           </p>
           <h1 className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] text-3xl">
-            Post This Week&apos;s Comic
+            Post a New Comic
           </h1>
         </div>
 
-        {status === "done" ? (
+        {status === "done" && published ? (
           <div className="rounded-2xl border border-[#1DB954]/50 bg-[#1a1a1a] p-8 text-center">
             <p className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#1DB954] text-xl mb-2">
-              🎉 It&apos;s live!
+              🎉 Published!
             </p>
             <p className="text-[#f5f5f5]/60 text-sm font-[family-name:var(--font-inter)] mb-6">
-              The comic is published and showing as this week&apos;s strip.
+              {isNewest
+                ? `"${published.title}" is live as this week's strip.`
+                : `"${published.title}" is published for ${formatComicDateShort(published.date)} — it's in the archive (#${published.position} of ${published.total}).`}
             </p>
             <div className="flex flex-col gap-3">
               <a
@@ -190,17 +274,76 @@ export default function ComicsAdminPage() {
             </div>
 
             <div>
-              <label className={labelCls}>Comic image</label>
+              <label className={labelCls}>
+                Comic image{panels.length > 1 ? "s" : ""}
+                {panels.length > 0 && (
+                  <span className="text-[#f5f5f5]/35 normal-case tracking-normal">
+                    {" "}
+                    — {panels.length} panel{panels.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </label>
               <input
                 ref={fileInput}
                 type="file"
+                multiple
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => onPickFile(e.target.files?.[0] || null)}
+                onChange={(e) => addPanels(e.target.files)}
                 className="block w-full text-sm text-[#f5f5f5]/60 font-[family-name:var(--font-inter)] file:mr-3 file:py-2.5 file:px-5 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#2a2a2a] file:text-[#f5f5f5] hover:file:bg-[#3a3a3a] file:cursor-pointer"
               />
-              {preview && (
-                <div className="mt-3 rounded-xl overflow-hidden border border-[#2a2a2a]" style={{ background: "#f7f2e5" }}>
-                  <img src={preview} alt="Preview" className="w-full h-auto" />
+              <p className="mt-1.5 text-[#f5f5f5]/35 text-xs font-[family-name:var(--font-inter)]">
+                One image, or every panel of a multi-panel strip (up to {MAX_PANELS}).
+                Readers see them top to bottom in the order below — use the arrows
+                to fix the order.
+              </p>
+              {panels.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {panels.map((p, i) => (
+                    <div
+                      key={p.preview}
+                      className="rounded-xl overflow-hidden border border-[#2a2a2a]"
+                      style={{ background: "#f7f2e5" }}
+                    >
+                      <img src={p.preview} alt={`Panel ${i + 1}`} className="w-full h-auto" />
+                      <div className="flex items-center justify-between px-3 py-2 bg-[#1a1a1a] border-t border-[#2a2a2a]">
+                        <span className="text-[#f5f5f5]/50 text-xs font-[family-name:var(--font-oswald)] uppercase tracking-widest">
+                          Panel {i + 1} of {panels.length}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          {panels.length > 1 && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => movePanel(i, -1)}
+                                disabled={i === 0}
+                                aria-label={`Move panel ${i + 1} up`}
+                                className="text-[#f5f5f5]/60 hover:text-[#ff6b1a] disabled:opacity-20 text-base leading-none"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => movePanel(i, 1)}
+                                disabled={i === panels.length - 1}
+                                aria-label={`Move panel ${i + 1} down`}
+                                className="text-[#f5f5f5]/60 hover:text-[#ff6b1a] disabled:opacity-20 text-base leading-none"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removePanel(i)}
+                            aria-label={`Remove panel ${i + 1}`}
+                            className="text-xs font-[family-name:var(--font-oswald)] uppercase tracking-wider text-[#e63030]/70 hover:text-[#e63030]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -219,7 +362,7 @@ export default function ComicsAdminPage() {
             </div>
 
             <div>
-              <label className={labelCls}>Drop date (Sunday)</label>
+              <label className={labelCls}>Date posted</label>
               <input
                 type="date"
                 required
@@ -227,6 +370,10 @@ export default function ComicsAdminPage() {
                 onChange={(e) => setDate(e.target.value)}
                 className={inputCls}
               />
+              <p className="mt-1.5 text-[#f5f5f5]/35 text-xs font-[family-name:var(--font-inter)]">
+                Already set to today — leave it. Back-dating is fine; future
+                dates show on the site immediately.
+              </p>
             </div>
 
             {message && (
@@ -264,7 +411,8 @@ export default function ComicsAdminPage() {
                       {c.title}
                     </p>
                     <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-inter)]">
-                      {c.date}
+                      {formatComicDateShort(c.date)}{" "}
+                      <span className="text-[#f5f5f5]/25">({c.date})</span>
                     </p>
                   </div>
                   {!c.legacy && (

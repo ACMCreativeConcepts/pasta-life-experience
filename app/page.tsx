@@ -9,6 +9,10 @@ import RewardsSection from "@/components/RewardsSection";
 import GamesSection from "@/components/GamesSection";
 import Footer from "@/components/Footer";
 
+// The homepage features this week's comic (ComicsSection); render it fresh
+// so a new strip shows up immediately instead of waiting on a baked snapshot.
+export const dynamic = "force-dynamic";
+
 export default function Home() {
   return (
     <>

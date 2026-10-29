@@ -1,12 +1,21 @@
 import SectionHeader from "@/components/SectionHeader";
-import { getComics, formatComicDate } from "@/lib/comics";
+import { getComics, getLegacyComics, sortComics, type ComicEntry } from "@/lib/comics";
+import { formatComicDate } from "@/lib/dates";
 
 /**
  * Homepage comics section: this week's strip, big, on paper —
  * tap through to the full reader at /comics.
  */
 export default async function ComicsSection() {
-  const comics = await getComics();
+  let comics: ComicEntry[];
+  let archiveDown = false;
+  try {
+    comics = await getComics();
+  } catch (error) {
+    console.error("[ComicsSection] Archive read failed:", error);
+    comics = sortComics(getLegacyComics());
+    archiveDown = true;
+  }
   const latest = comics[0];
 
   return (
@@ -34,7 +43,6 @@ export default async function ComicsSection() {
                 alt={latest.title}
                 loading="lazy"
                 className="w-full h-auto block mx-auto"
-                style={{ maxHeight: "70vh", width: "auto", maxWidth: "100%" }}
               />
               <div
                 className="mt-5 text-center border-t pt-4"
@@ -66,7 +74,9 @@ export default async function ComicsSection() {
             Read the Archive →
           </a>
           <p className="text-[#f5f5f5]/30 text-xs font-[family-name:var(--font-inter)] mt-3">
-            {comics.length} strips and counting. New comics every Sunday.
+            {archiveDown
+              ? "The newest strips are temporarily unavailable — the classics are still here."
+              : `${comics.length} strips and counting. New comics every Sunday.`}
           </p>
         </div>
       </div>
