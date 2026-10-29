@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { formatComicDate, type ComicEntry } from "@/lib/comics";
+import { type ComicEntry } from "@/lib/comics";
+import { formatComicDate } from "@/lib/dates";
 
 /**
  * One strip at a time, big, on paper — Far Side rules.

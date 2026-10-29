@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
-import { getComics } from "@/lib/comics";
+import { getComics, getLegacyComics, sortComics, type ComicEntry } from "@/lib/comics";
 import ComicReader from "@/components/ComicReader";
+
+// Always render fresh: the archive changes whenever the team publishes,
+// and a baked-in static copy is how comics went missing before.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Pasta Life Comics | Graffiti Pasta",
@@ -9,7 +13,15 @@ export const metadata: Metadata = {
 };
 
 export default async function ComicsPage() {
-  const comics = await getComics();
+  let comics: ComicEntry[];
+  let archiveDown = false;
+  try {
+    comics = await getComics();
+  } catch (error) {
+    console.error("[comics page] Archive read failed:", error);
+    comics = sortComics(getLegacyComics());
+    archiveDown = true;
+  }
 
   return (
     <main
@@ -38,6 +50,12 @@ export default async function ComicsPage() {
               }}
             />
           </div>
+          {archiveDown && (
+            <p className="mt-4 text-[#f5f5f5]/40 text-sm font-[family-name:var(--font-inter)]">
+              The newest strips are temporarily unavailable — enjoy these
+              classics while we get them back.
+            </p>
+          )}
         </div>
 
         <ComicReader comics={comics} />

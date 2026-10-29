@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { todayInChicago, isValidYmd, formatComicDateShort } from "@/lib/dates";
 
 interface ComicRow {
   id: string;
@@ -11,11 +12,11 @@ interface ComicRow {
   legacy?: boolean;
 }
 
-/** Default to today if it's Sunday, otherwise the coming Sunday. */
-function defaultSunday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-  return d.toISOString().slice(0, 10);
+interface PublishResult {
+  title: string;
+  date: string;
+  position: number;
+  total: number;
 }
 
 /** Downscale big phone photos client-side so uploads stay light. */
@@ -43,15 +44,19 @@ const labelCls =
 export default function ComicsAdminPage() {
   const [passcode, setPasscode] = useState("");
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(defaultSunday());
+  const [date, setDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "publishing" | "done">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [comics, setComics] = useState<ComicRow[]>([]);
+  const [published, setPublished] = useState<PublishResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Set in an effect (not useState) so the server-rendered HTML and the
+    // client agree even when they sit in different timezones.
+    setDate(todayInChicago());
     try {
       const saved = sessionStorage.getItem("gp-comics-passcode");
       if (saved) setPasscode(saved);
@@ -63,7 +68,8 @@ export default function ComicsAdminPage() {
     try {
       const res = await fetch("/api/comics");
       const data = await res.json();
-      if (Array.isArray(data.comics)) setComics(data.comics);
+      if (res.ok && Array.isArray(data.comics)) setComics(data.comics);
+      else if (data?.error) setMessage(data.error);
     } catch {}
   };
 
@@ -81,6 +87,24 @@ export default function ComicsAdminPage() {
       setMessage("Pick the comic image first.");
       return;
     }
+    if (!isValidYmd(date)) {
+      setMessage(`"${date}" isn't a real date — use the picker.`);
+      return;
+    }
+    const dupe = comics.find(
+      (c) =>
+        c.title.trim().toLowerCase() === title.trim().toLowerCase() &&
+        c.date === date
+    );
+    if (
+      dupe &&
+      !window.confirm(
+        `"${dupe.title}" dated ${formatComicDateShort(dupe.date)} is already on the site. Post it again anyway?`
+      )
+    ) {
+      return;
+    }
+
     setStatus("publishing");
     setMessage(null);
     try {
@@ -101,15 +125,35 @@ export default function ComicsAdminPage() {
       const res = await fetch("/api/comics", { method: "POST", body: form });
       const data = await res.json();
 
-      if (res.ok) {
+      const confirmed =
+        res.ok &&
+        data?.ok === true &&
+        data?.entry?.id &&
+        Array.isArray(data.comics) &&
+        data.comics.some((c: ComicRow) => c.id === data.entry.id);
+
+      if (confirmed) {
+        const idx = data.comics.findIndex((c: ComicRow) => c.id === data.entry.id);
+        setComics(data.comics);
+        setPublished({
+          title: data.entry.title,
+          date: data.entry.date,
+          position: idx + 1,
+          total: data.comics.length,
+        });
         setStatus("done");
         setTitle("");
         onPickFile(null);
         if (fileInput.current) fileInput.current.value = "";
+      } else if (res.ok) {
+        setStatus("idle");
+        setMessage(
+          "Saved state couldn't be confirmed — refresh the list before posting again."
+        );
         refreshList();
       } else {
         setStatus("idle");
-        setMessage(data.error || "Upload failed. Try again.");
+        setMessage(data?.error || "Upload failed. Try again.");
       }
     } catch {
       setStatus("idle");
@@ -126,12 +170,18 @@ export default function ComicsAdminPage() {
         body: JSON.stringify({ id: comic.id, passcode }),
       });
       const data = await res.json();
-      if (res.ok) refreshList();
-      else setMessage(data.error || "Delete failed.");
+      if (res.ok && data?.ok === true && Array.isArray(data.comics)) {
+        setComics(data.comics);
+      } else {
+        setMessage(data?.error || "Delete failed.");
+        refreshList();
+      }
     } catch {
       setMessage("Delete failed. Try again.");
     }
   };
+
+  const isNewest = published !== null && published.position === 1;
 
   return (
     <main
@@ -144,17 +194,19 @@ export default function ComicsAdminPage() {
             GP Team Only
           </p>
           <h1 className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#f5f5f5] text-3xl">
-            Post This Week&apos;s Comic
+            Post a New Comic
           </h1>
         </div>
 
-        {status === "done" ? (
+        {status === "done" && published ? (
           <div className="rounded-2xl border border-[#1DB954]/50 bg-[#1a1a1a] p-8 text-center">
             <p className="font-[family-name:var(--font-oswald)] font-bold uppercase tracking-wider text-[#1DB954] text-xl mb-2">
-              🎉 It&apos;s live!
+              🎉 Published!
             </p>
             <p className="text-[#f5f5f5]/60 text-sm font-[family-name:var(--font-inter)] mb-6">
-              The comic is published and showing as this week&apos;s strip.
+              {isNewest
+                ? `"${published.title}" is live as this week's strip.`
+                : `"${published.title}" is published for ${formatComicDateShort(published.date)} — it's in the archive (#${published.position} of ${published.total}).`}
             </p>
             <div className="flex flex-col gap-3">
               <a
@@ -219,7 +271,7 @@ export default function ComicsAdminPage() {
             </div>
 
             <div>
-              <label className={labelCls}>Drop date (Sunday)</label>
+              <label className={labelCls}>Date posted</label>
               <input
                 type="date"
                 required
@@ -227,6 +279,10 @@ export default function ComicsAdminPage() {
                 onChange={(e) => setDate(e.target.value)}
                 className={inputCls}
               />
+              <p className="mt-1.5 text-[#f5f5f5]/35 text-xs font-[family-name:var(--font-inter)]">
+                Already set to today — leave it. Back-dating is fine; future
+                dates show on the site immediately.
+              </p>
             </div>
 
             {message && (
@@ -264,7 +320,8 @@ export default function ComicsAdminPage() {
                       {c.title}
                     </p>
                     <p className="text-[#f5f5f5]/40 text-xs font-[family-name:var(--font-inter)]">
-                      {c.date}
+                      {formatComicDateShort(c.date)}{" "}
+                      <span className="text-[#f5f5f5]/25">({c.date})</span>
                     </p>
                   </div>
                   {!c.legacy && (
