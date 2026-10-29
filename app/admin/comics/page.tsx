@@ -75,13 +75,17 @@ export default function ComicsAdminPage() {
   const MAX_PANELS = 8;
 
   const addPanels = (list: FileList | null) => {
-    if (!list) return;
+    // Snapshot the FileList before touching the input: clearing the input
+    // empties the live FileList, and React runs state updaters after this
+    // handler returns — reading `list` in the updater would find it empty.
+    const added = Array.from(list ?? []).map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    if (added.length === 0) return;
     setPanels((old) => {
-      const next = [...old];
-      for (const f of Array.from(list)) {
-        if (next.length >= MAX_PANELS) break;
-        next.push({ file: f, preview: URL.createObjectURL(f) });
-      }
+      const next = [...old, ...added].slice(0, MAX_PANELS);
+      added.slice(Math.max(0, MAX_PANELS - old.length)).forEach((p) => URL.revokeObjectURL(p.preview));
       return next;
     });
     if (fileInput.current) fileInput.current.value = "";
