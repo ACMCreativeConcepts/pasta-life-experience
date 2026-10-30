@@ -108,7 +108,7 @@ export default function ComicReader({ comics }: { comics: ComicEntry[] }) {
             className="text-xs font-[family-name:var(--font-inter)] mt-1"
             style={{ color: "#6b6454" }}
           >
-            Pasta Life Comics by Svaya &middot; {formatComicDate(comic.date)}
+            Pasta Life Comics by Anthony Morel | Illustrations by Svaya &middot; {formatComicDate(comic.date)}
           </p>
         </div>
       </div>
