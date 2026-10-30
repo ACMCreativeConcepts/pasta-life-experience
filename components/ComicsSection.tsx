@@ -58,7 +58,7 @@ export default async function ComicsSection() {
                   className="text-xs font-[family-name:var(--font-inter)] mt-1"
                   style={{ color: "#6b6454" }}
                 >
-                  Pasta Life Comics by Svaya &middot; {formatComicDate(latest.date)}
+                  Pasta Life Comics by Anthony Morel | Illustrations by Svaya &middot; {formatComicDate(latest.date)}
                 </p>
               </div>
             </div>
