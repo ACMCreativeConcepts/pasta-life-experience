@@ -71,122 +71,225 @@ export async function GET() {
   }
 }
 
+function slugify(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "comic"
+  );
+}
+
+function validateTitleDate(title: string, date: string): NextResponse | null {
+  if (!title || title.length > 120) {
+    return json({ error: "Please give the comic a title (up to 120 characters)." }, 400);
+  }
+  if (!isValidYmd(date)) {
+    return json({ error: `"${date}" isn't a real date — use the date picker.` }, 400);
+  }
+  return null;
+}
+
+/** A panel URL counts only if it lives in THIS environment's strip folder. */
+function isOwnStripUrl(u: string): boolean {
+  try {
+    const url = new URL(u);
+    return (
+      url.protocol === "https:" &&
+      (url.hostname === "blob.vercel-storage.com" ||
+        url.hostname.endsWith(".blob.vercel-storage.com")) &&
+      url.pathname.startsWith(`/${STRIP_PREFIX}`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Panels are already in Blob storage; write the entry, confirm it landed, and
+ * answer with the fresh list. On any failure the panels are deleted — never
+ * a half-published comic.
+ */
+async function finishPublish(
+  title: string,
+  date: string,
+  panelUrls: string[],
+  forceEntryFailure: boolean
+): Promise<NextResponse> {
+  const entry: ComicEntry = {
+    id: `${date}-${slugify(title)}-${Date.now().toString(36)}`,
+    title,
+    date,
+    image: panelUrls[0],
+    ...(panelUrls.length > 1 ? { images: panelUrls } : {}),
+    createdAt: new Date().toISOString(),
+  };
+
+  // Save the entry and confirm it actually landed (head() reads the store
+  // directly, not the CDN). If anything fails, clean up the images and
+  // report failure — never claim success for an unconfirmed save.
+  try {
+    if (process.env.VERCEL_ENV !== "production" && forceEntryFailure) {
+      throw new Error("Forced entry-write failure (preview test hook)");
+    }
+    await saveEntry(entry);
+    await head(entryPath(entry.id));
+  } catch (error) {
+    console.error("[Comics API] Entry save/confirm failed:", error);
+    const cleanup = await Promise.allSettled(panelUrls.map((u) => del(u)));
+    cleanup
+      .filter((r) => r.status === "rejected")
+      .forEach((r) =>
+        console.error("[Comics API] Image cleanup also failed:", r)
+      );
+    return json(
+      { error: "The comic couldn't be saved — nothing was published. Try again." },
+      500
+    );
+  }
+
+  revalidateComicPages();
+
+  let comics: ComicEntry[];
+  try {
+    comics = await freshComics(entry);
+  } catch (error) {
+    // The save is confirmed; only the fresh listing failed. Return what we
+    // know for sure so the admin UI stays truthful.
+    console.error("[Comics API] Post-save listing failed:", error);
+    comics = sortComics([entry, ...getLegacyComics()]);
+  }
+
+  return json({ ok: true, entry, comics });
+}
+
+/**
+ * JSON publish: the admin page uploads panels straight to Blob storage
+ * (via /api/comics/upload) and sends only their URLs here, staying far
+ * below the ~4.5MB serverless request-body cap.
+ */
+async function postFromJson(req: NextRequest): Promise<NextResponse> {
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Bad request." }, 400);
+  }
+
+  const denied = checkPasscode(body.passcode);
+  if (denied) return denied;
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return json({ error: "Blob storage isn't connected to this project yet." }, 503);
+  }
+
+  // The admin page checks the passcode here before uploading any panels —
+  // failures in the upload-token route only surface as a generic message.
+  if (body.precheck === true) {
+    return json({ ok: true });
+  }
+
+  const title = String(body.title || "").trim();
+  const date = String(body.date || "").trim();
+  const invalid = validateTitleDate(title, date);
+  if (invalid) return invalid;
+
+  const panelUrls = Array.isArray(body.panelUrls) ? body.panelUrls : [];
+  if (panelUrls.length === 0) {
+    return json({ error: "No image attached." }, 400);
+  }
+  if (panelUrls.length > MAX_PANELS) {
+    return json({ error: `Max ${MAX_PANELS} panels per comic.` }, 400);
+  }
+  for (const u of panelUrls) {
+    if (typeof u !== "string" || !isOwnStripUrl(u)) {
+      return json({ error: "A panel isn't in this site's comic storage — re-upload it." }, 400);
+    }
+  }
+
+  return finishPublish(
+    title,
+    date,
+    panelUrls as string[],
+    body.__test_fail_entry === "1"
+  );
+}
+
+/** Multipart publish: panels travel inside the request (fine for small files). */
+async function postFromForm(req: NextRequest): Promise<NextResponse> {
+  const form = await req.formData();
+
+  const denied = checkPasscode(form.get("passcode"));
+  if (denied) return denied;
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return json({ error: "Blob storage isn't connected to this project yet." }, 503);
+  }
+
+  // Panels in reading order: "files" (repeated) or the single legacy "file"
+  const files = [...form.getAll("files"), form.get("file")].filter(
+    (f): f is File => f instanceof File
+  );
+  const title = String(form.get("title") || "").trim();
+  const date = String(form.get("date") || "").trim();
+
+  if (files.length === 0) {
+    return json({ error: "No image attached." }, 400);
+  }
+  if (files.length > MAX_PANELS) {
+    return json({ error: `Max ${MAX_PANELS} panels per comic.` }, 400);
+  }
+  for (const f of files) {
+    if (!ALLOWED_TYPES[f.type]) {
+      return json({ error: "Every panel must be a JPG, PNG, or WebP." }, 400);
+    }
+    if (f.size > MAX_BYTES) {
+      return json({ error: "A panel is too large (max 10MB each)." }, 400);
+    }
+  }
+  const invalid = validateTitleDate(title, date);
+  if (invalid) return invalid;
+
+  const slug = slugify(title);
+
+  // Upload every panel; if a later one fails, clean up the earlier ones.
+  const panelUrls: string[] = [];
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const suffix = files.length > 1 ? `-p${i + 1}` : "";
+      const blob = await put(
+        `${STRIP_PREFIX}${date}-${slug}${suffix}.${ALLOWED_TYPES[f.type]}`,
+        f,
+        { access: "public", addRandomSuffix: true }
+      );
+      panelUrls.push(blob.url);
+    }
+  } catch (error) {
+    console.error("[Comics API] Panel upload failed:", error);
+    await Promise.allSettled(panelUrls.map((u) => del(u)));
+    return json(
+      { error: "The image upload failed — nothing was published. Try again." },
+      500
+    );
+  }
+
+  return finishPublish(
+    title,
+    date,
+    panelUrls,
+    form.get("__test_fail_entry") === "1"
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const form = await req.formData();
-
-    const denied = checkPasscode(form.get("passcode"));
-    if (denied) return denied;
-
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return json({ error: "Blob storage isn't connected to this project yet." }, 503);
+    const contentType = req.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      return await postFromJson(req);
     }
-
-    // Panels in reading order: "files" (repeated) or the single legacy "file"
-    const files = [...form.getAll("files"), form.get("file")].filter(
-      (f): f is File => f instanceof File
-    );
-    const title = String(form.get("title") || "").trim();
-    const date = String(form.get("date") || "").trim();
-
-    if (files.length === 0) {
-      return json({ error: "No image attached." }, 400);
-    }
-    if (files.length > MAX_PANELS) {
-      return json({ error: `Max ${MAX_PANELS} panels per comic.` }, 400);
-    }
-    for (const f of files) {
-      if (!ALLOWED_TYPES[f.type]) {
-        return json({ error: "Every panel must be a JPG, PNG, or WebP." }, 400);
-      }
-      if (f.size > MAX_BYTES) {
-        return json({ error: "A panel is too large (max 10MB each)." }, 400);
-      }
-    }
-    if (!title || title.length > 120) {
-      return json({ error: "Please give the comic a title (up to 120 characters)." }, 400);
-    }
-    if (!isValidYmd(date)) {
-      return json({ error: `"${date}" isn't a real date — use the date picker.` }, 400);
-    }
-
-    const slug =
-      title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 60) || "comic";
-
-    // Upload every panel; if a later one fails, clean up the earlier ones.
-    const panelUrls: string[] = [];
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const suffix = files.length > 1 ? `-p${i + 1}` : "";
-        const blob = await put(
-          `${STRIP_PREFIX}${date}-${slug}${suffix}.${ALLOWED_TYPES[f.type]}`,
-          f,
-          { access: "public", addRandomSuffix: true }
-        );
-        panelUrls.push(blob.url);
-      }
-    } catch (error) {
-      console.error("[Comics API] Panel upload failed:", error);
-      await Promise.allSettled(panelUrls.map((u) => del(u)));
-      return json(
-        { error: "The image upload failed — nothing was published. Try again." },
-        500
-      );
-    }
-
-    const entry: ComicEntry = {
-      id: `${date}-${slug}-${Date.now().toString(36)}`,
-      title,
-      date,
-      image: panelUrls[0],
-      ...(panelUrls.length > 1 ? { images: panelUrls } : {}),
-      createdAt: new Date().toISOString(),
-    };
-
-    // Save the entry and confirm it actually landed (head() reads the store
-    // directly, not the CDN). If anything fails, clean up the image and
-    // report failure — never claim success for an unconfirmed save.
-    try {
-      if (
-        process.env.VERCEL_ENV !== "production" &&
-        form.get("__test_fail_entry") === "1"
-      ) {
-        throw new Error("Forced entry-write failure (preview test hook)");
-      }
-      await saveEntry(entry);
-      await head(entryPath(entry.id));
-    } catch (error) {
-      console.error("[Comics API] Entry save/confirm failed:", error);
-      const cleanup = await Promise.allSettled(panelUrls.map((u) => del(u)));
-      cleanup
-        .filter((r) => r.status === "rejected")
-        .forEach((r) =>
-          console.error("[Comics API] Image cleanup also failed:", r)
-        );
-      return json(
-        { error: "The comic couldn't be saved — nothing was published. Try again." },
-        500
-      );
-    }
-
-    revalidateComicPages();
-
-    let comics: ComicEntry[];
-    try {
-      comics = await freshComics(entry);
-    } catch (error) {
-      // The save is confirmed; only the fresh listing failed. Return what we
-      // know for sure so the admin UI stays truthful.
-      console.error("[Comics API] Post-save listing failed:", error);
-      comics = sortComics([entry, ...getLegacyComics()]);
-    }
-
-    return json({ ok: true, entry, comics });
+    return await postFromForm(req);
   } catch (error) {
     console.error("[Comics API] Upload failed:", error);
     return json({ error: "Upload failed. Please try again." }, 500);
